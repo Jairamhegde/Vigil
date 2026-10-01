@@ -50,7 +50,7 @@ export default function Sidebar({ activeTab, setActiveTab, onRefresh, isRefreshi
         </div>
         <div>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em' }} className="title-font">
-            HybridGuard
+            Vigil
           </h2>
           <p style={{ fontSize: '0.7rem', color: '#fb7185', fontWeight: 700, letterSpacing: '0.05em' }}>
             ISPM CONSOLE
