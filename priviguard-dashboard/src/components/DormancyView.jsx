@@ -56,7 +56,7 @@ export default function DormancyView({ dormancyData }) {
 
       {/* Dormancy Distribution Chart */}
       <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
           <div style={{ width: '4px', height: '1.2rem', background: '#9f1239', borderRadius: '2px' }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#29181d' }} className="title-font">
             Dormancy Distribution
@@ -89,7 +89,7 @@ export default function DormancyView({ dormancyData }) {
 
       {/* Heatmap Grid Matrix */}
       <div className="glass-panel" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           <div style={{ width: '4px', height: '1.2rem', background: '#b45309', borderRadius: '2px' }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#29181d' }} className="title-font">
             Dormancy Heatmap Matrix
@@ -135,7 +135,7 @@ export default function DormancyView({ dormancyData }) {
 
       {/* Identity Dormancy Ledger Table */}
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           <div style={{ width: '4px', height: '1.2rem', background: '#0f766e', borderRadius: '2px' }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#29181d' }} className="title-font">
             Identity Dormancy Ledger

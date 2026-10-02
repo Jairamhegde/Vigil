@@ -9,8 +9,8 @@ export default function IdentitiesView({ identitiesData, searchIdentities, setSe
     <div>
       {/* Search Header Bar */}
       <div className="glass-panel" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyBetween: 'space-between', gap: '1rem' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: '240px' }}>
             <Search size={16} color="#9e8a92" style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)' }} />
             <input
               type="text"
@@ -38,7 +38,7 @@ export default function IdentitiesView({ identitiesData, searchIdentities, setSe
 
       {/* Identities Directory Table */}
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           <div style={{ width: '4px', height: '1.2rem', background: '#be123c', borderRadius: '2px' }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#29181d' }} className="title-font">
             All Monitored Identities Directory

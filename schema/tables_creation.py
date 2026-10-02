@@ -1,4 +1,10 @@
 import sqlite3
+import sys
+import os
+
+# Add project root to sys.path so imports work regardless of where script is run from
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from backend.db_connection import connect_db
 
 conn = connect_db()
@@ -126,16 +132,16 @@ alter table security_incidents
 add column elevated_tier TEXT;
 """
 
-# cur.execute ("delete from security_incidents;")
-cur.execute(alter_securitty_insident)
+try:
+    cur.execute(alter_securitty_insident)
+except sqlite3.OperationalError:
+    pass
 # cur.execute(huma_identity_table)
 # cur.execute(platforms)
 # cur.execute(accounts_table)
 # cur.execute(role_defination_table)
 # cur.execute(account_role_mapping)
 # cur.execute(security_incidents)
-
-
 
 conn.commit()
 conn.close()

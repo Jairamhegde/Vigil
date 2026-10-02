@@ -48,12 +48,18 @@
   padding: 0;
 }
 
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 body {
   background-color: var(--bg-main);
   color: var(--text-main);
   font-family: var(--font-main);
   min-height: 100vh;
-  overflow-x: hidden;
   line-height: 1.5;
   background-image: 
     radial-gradient(circle at 10% 10%, rgba(159, 18, 57, 0.03) 0%, transparent 40%),
@@ -79,7 +85,9 @@ body {
 /* Layout Grid */
 .app-container {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
 }
 
 /* Main Content Card Panel */

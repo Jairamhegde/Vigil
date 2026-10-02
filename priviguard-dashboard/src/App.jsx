@@ -259,7 +259,15 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main style={{ flex: 1, padding: '2rem 2.5rem', maxWidth: '1400px' }}>
+      <main style={{
+        flex: 1,
+        minWidth: 0,
+        height: '100vh',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: '2rem 2.5rem',
+        maxWidth: '100%'
+      }}>
         <Header
           pageTitle={currentHead.title}
           pageSubtitle={currentHead.subtitle}

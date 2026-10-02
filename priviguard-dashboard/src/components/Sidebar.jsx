@@ -24,15 +24,17 @@ export default function Sidebar({ activeTab, setActiveTab, onRefresh, isRefreshi
   return (
     <aside style={{
       width: '260px',
+      minWidth: '260px',
+      flexShrink: 0,
+      height: '100vh',
       background: 'linear-gradient(180deg, #2a141c 0%, #1d0c14 100%)',
       borderRight: '1px solid #3d1f2b',
       display: 'flex',
       flexDirection: 'column',
-      minHeight: '100vh',
       padding: '1.5rem 1rem',
-      position: 'sticky',
-      top: 0,
-      boxShadow: '4px 0 20px rgba(0,0,0,0.15)'
+      boxShadow: '4px 0 20px rgba(0,0,0,0.15)',
+      overflowY: 'auto',
+      zIndex: 20
     }}>
       {/* Brand Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', padding: '0 0.5rem' }}>

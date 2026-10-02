@@ -79,6 +79,8 @@ export default function OverviewView({ overviewData, onDisableStatus, onSelectId
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '1rem',
         background: 'linear-gradient(135deg, #fff1f2 0%, #ffffff 100%)',
         border: '1px solid #fecdd3'
       }}>
@@ -102,7 +104,7 @@ export default function OverviewView({ overviewData, onDisableStatus, onSelectId
 
       {/* Top 10 Risk Identities Table */}
       <div className="glass-panel" style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
           <div style={{ width: '4px', height: '1.2rem', background: '#9f1239', borderRadius: '2px' }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#29181d' }} className="title-font">
             Top 10 High Risk Identities

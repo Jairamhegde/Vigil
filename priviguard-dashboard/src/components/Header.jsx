@@ -13,6 +13,8 @@ export default function Header({ pageTitle, pageSubtitle }) {
       display: 'flex',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
+      flexWrap: 'wrap',
+      gap: '1rem',
       paddingBottom: '1.25rem',
       marginBottom: '1.75rem',
       borderBottom: '1px solid #e6ded6'
@@ -26,7 +28,7 @@ export default function Header({ pageTitle, pageSubtitle }) {
         </p>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -66,7 +68,6 @@ export default function Header({ pageTitle, pageSubtitle }) {
           <Activity size={14} color="#0f766e" />
           <span>Status: <strong style={{ color: '#0f766e' }}>Live Watchlist</strong></span>
         </div>
-
 
         <div style={{
           display: 'flex',
