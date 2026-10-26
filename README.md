@@ -1,156 +1,136 @@
-# HybridGuard
+# Vigil
 
-**Cross-platform identity posture and risk dashboard.**
+**An identity security console that shows who has access to what across HR, Active Directory, Okta, AWS and Azure, and which of those identities are a risk.**
 
-**[Live Demo (Streamlit)](https://hybridguard-console.streamlit.app/)**
+## The problem
 
-> **Status:** The live demo runs on Streamlit. The dashboard is currently being migrated to **React + FastAPI**, which is still in progress. The React frontend, FastAPI backend and localhost setup instructions in this repo belong to that migration.
+People join, move and leave, but their accounts don't always follow. Every company ends up with:
 
----
+- **Ghost accounts.** Someone has left, but their login still works.
+- **Dormant access.** Accounts nobody has used in months, still open to attackers.
+- **Hidden admin rights.** Admin access inherited through nested groups that nobody notices.
 
-## What It Is
+Each system only sees its own accounts, so no single team sees the whole picture.
 
-HybridGuard is an Identity Security Posture Management (ISPM) tool. It pulls identity data from **HR, Active Directory, AWS IAM and Okta**, matches accounts that belong to the same person, normalizes privileges into a common hierarchy, and scores each identity's risk. Results are shown in a dashboard with one-click remediation and downloadable reports.
+## What Vigil does
 
-## What It Solves
+- **Matches every account to a real person.** AD, Okta, AWS and Azure accounts are linked to the HR record by email. Admin accounts without a mailbox fall back to employee ID.
+- **Resolves nested permissions.** AD groups inside groups (even circular ones) are walked to find every inherited right, along with the group it came through.
+- **Ranks privilege on one scale.** Tier 0 is any admin, tier 1 is elevated, tier 2 is a normal user.
+- **Scores every identity:**
+  - **Ghost:** terminated in HR but an account is still enabled
+  - **Dormant:** an account unused for 30+ days, or never used
+  - **Damage score:** how much harm the identity could do with its access
+  - **Risk score:** risk signals (no MFA, activity after leaving, sensitive actions...) combined with damage
+- **Shows it all in one dashboard** that only super admins can open.
 
-Enterprises manage identities across disconnected systems. The same person may appear as `ahill`, `a.hill` and `allison.hill1`, and nobody has a single view of who holds which privileges. That makes the following hard to spot:
-
-- **Ghost accounts:** employees disabled in HR who are still active on a platform
-- **Privilege creep:** standard employees holding elevated access
-- **Dormant accounts:** unused accounts that stay open as attack surface
-
-HybridGuard gives security teams one prioritized view of these risks and explains why each identity was flagged.
-
----
-
-## How It Works
+## Architecture
 
 ```mermaid
 flowchart LR
-    A["CSV Telemetry<br/>HR · AD · AWS · Okta"] --> B["Fuzzy Identity<br/>Resolution"]
-    B --> C[("3NF SQLite<br/>Database")]
-    C --> D["Threat Detection<br/>& Risk Scoring"]
-    D --> E["Dashboard<br/>& Remediation"]
-    E --> F["Risk Reports"]
+    A["data/<br/>HR · AD · Okta · AWS<br/>JSON exports"] --> B["ingest_data.py<br/>extract, match by email,<br/>normalize tiers, resolve nesting"]
+    B --> C["insert_data.py"]
+    C --> D[("SQLite<br/>database.db")]
+    D --> E["metrics.py<br/>dormant · ghost<br/>damage · risk"]
+    E --> D
+    D --> F["queries.py"]
+    F --> G["expose_backend.py<br/>FastAPI + login"]
+    G --> H["React dashboard"]
 ```
 
-### Core Algorithms
+Each part only talks to the next one. The extractor never touches the database, and the dashboard only talks to the API over HTTP.
 
-**1. Fuzzy identity resolution**
-Usernames are cleaned and reduced to a name pattern, then compared using `difflib.SequenceMatcher`. A match is accepted at a similarity ratio of **0.80 or higher**. Accounts below the threshold are flagged as potential orphan accounts.
+For the full explanation (matching logic, schema, nested groups and every scoring formula with worked examples), see **[DETAIL.md](DETAIL.md)**.
 
-**2. Privilege tier normalization**
-Platform-specific roles are mapped to one hierarchy so privileges can be compared across systems.
+## Screenshots
 
-| Tier | Meaning | Examples |
-|------|---------|----------|
-| Tier 0 | Full administrative control | `AdministratorAccess`, `Domain Admins`, `SuperAdmin` |
-| Tier 1 | Elevated or internal-tool access | |
-| Tier 2 | Standard user access | |
+**Overview**
 
-**3. Weighted risk scoring (0–100)**
+![Vigil overview dashboard](docs/screenshots/overview.png)
 
-```python
-risk_score = (damage_score * 0.5) + (dormancy_score * 0.5)
-```
+**Risky identities**
 
-| Damage score (highest privilege) | | Dormancy score (days since login) | |
-|---|---|---|---|
-| Tier 0 | 100 | 90 or more | 100 |
-| Tier 1 | 50 | 60 or more | 50 |
-| Tier 2 | 10 | 30 or more | 10 |
-| Disabled user | 0 | Under 30 | 0 |
+![Vigil risky identities page](docs/screenshots/risky.png)
 
-Each identity is tagged with risk factors: `high_privilege`, `dormant_account`, `ghost_account`.
+## Data
 
-**4. Rule-based threat detection**
-
-| Threat | Severity | Rule |
-|--------|----------|------|
-| Ghost Account | Critical | Disabled in HR but active on a platform |
-| Privilege Creep | High | Standard employee holding elevated privileges |
-| Stale Token | Medium | No recorded credential rotation |
-
----
-
-## Features
-
-- Unified risk score across four platforms
-- Cross-platform identity correlation
-- Automated threat detection
-- Dashboard pages: Overview, Dormancy Analysis, Damage Score, Remediation Backlog, Identities
-- One-click remediation: access revocation and credential rotation
-- Downloadable reports with overall, damage and dormancy scores, risk factors and open incidents
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|------------|
-| Language | Python |
-| Identity matching | `difflib.SequenceMatcher` |
-| Database | SQLite (3NF schema) |
-| Live dashboard | Streamlit |
-| Migration in progress | FastAPI + Uvicorn (API), React 19 + Vite + Recharts + Lucide (frontend) |
-
-## Database Schema
-
-`hybridguard.db` uses a 3NF schema:
-
-`human_identities` · `platforms` · `accounts` · `role_definitions` · `account_role_mapping` · `audit_events` · `security_incidents`
-
-## Input Data
-
-Five CSV files drive each analysis run. Synthetic data is generated by `schema/simulate_data.py`.
+The `data/` folder holds a synthetic company: 160 employees, as of 30 Sep 2026.
 
 | File | Contents |
-|------|----------|
-| `user_details.csv` | HR master list with employment status |
-| `ad_users.csv` | Active Directory accounts and groups |
-| `aws_users.csv` | AWS IAM users and attached policies |
-| `okta_users.csv` | Okta accounts and role assignments |
-| `audit_events.csv` | Login history and privilege changes |
+|---|---|
+| `identities (2).json` | HR records: name, email, department, title, status (Active / On Leave / Terminated) and manager. The single source of truth. |
+| `ad_directory.json` | Active Directory: 173 accounts (employee, `adm-*` admin and `svc-*` service), 71 groups with nesting, and OUs. |
+| `okta_identities.json` | Okta: users, groups, MFA factors, admin roles, and the AWS / Azure access granted through Okta apps. |
+| `aws_cloudtrail_logs.json` | AWS CloudTrail: 12,118 events from May to September 2026. |
 
----
+Okta System Log (`okta_system_log.json`) and Azure activity log (`azure_activity_logs.json`) files are picked up automatically if you add them.
 
-## Getting Started
+## How to run
+
+You need **Python 3.10+** and **Node.js 18+**. Node is only used to build the dashboard on the first run.
 
 ```bash
-git clone https://github.com/Jairamhegde/HybridGuard.git
-cd HybridGuard
 pip install -r requirements.txt
-npm install
-
-python schema/simulate_data.py      # generate synthetic data
-python schema/tables_creation.py    # create the database
-python main.py                      # run matching, scoring and detection
+python run.py
 ```
 
-**Run the React + FastAPI version (migration in progress)**
+Open **http://localhost:8001** and sign in:
+
+| | |
+|---|---|
+| **Username** | `superadmin` |
+| **Password** | `Vigil@Demo2026` |
+
+> **This is a public demo login for the synthetic data.** Vigil only listens on `localhost`, but change the password before using it with real data:
+>
+> ```bash
+> python -m backend.auth create-user superadmin super_admin
+> ```
+
+`run.py` loads the data, computes the scores, builds the dashboard (only when it changed) and starts the server.
+
+**Choosing your own first login.** To create a different super admin instead of the demo one, set these before the very first run:
 
 ```bash
-npm run dev
+VIGIL_ADMIN_USER=admin VIGIL_ADMIN_PASSWORD="choose-a-strong-one" python run.py
 ```
 
-This starts the API at `http://127.0.0.1:8000` and the React console at `http://localhost:5173`.
-
-To run them separately:
+Add or reset users at any time:
 
 ```bash
-python -m uvicorn backend.api:app --reload --port 8000   # from the repo root
-cd priviguard-dashboard && npm run dev                   # in a second terminal
+python -m backend.auth create-user <username> super_admin    # or: viewer (cannot see the dashboard)
 ```
 
-## Project Structure
+**Other settings**
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VIGIL_PORT` | `8001` | Port to serve on |
+| `VIGIL_AUTH_SECRET` | random, stored in `backend/auth.db` | Key used to sign login sessions |
+| `VIGIL_CORS_ORIGINS` | none | Extra origins allowed to call the API |
+
+**Developing the dashboard** with hot reload:
+
+```bash
+python -m uvicorn backend.expose_backend:app --port 8001   # terminal 1
+cd frontend && npm run dev                                 # terminal 2, opens http://localhost:5174
+```
+
+## Project structure
 
 ```text
-backend/        api.py (FastAPI), db_connection.py, normalize_and_match.py, security_incidents.py
-schema/         simulate_data.py, tables_creation.py, clear_data.py
-csvs/           input telemetry files
-dashboard.py    Streamlit dashboard (live)
-priviguard-dashboard/   React dashboard (in progress)
-main.py         pipeline entrypoint
-hybridguard.db  SQLite database
+run.py              one command: load, score, build, serve
+backend/
+  ingest_data.py    read the JSON files, match accounts, normalize tiers, resolve nesting
+  insert_data.py    load into SQLite (safe to re-run)
+  table_creation.py database schema
+  metrics.py        dormant / ghost / damage / risk scoring
+  queries.py        dashboard queries
+  expose_backend.py FastAPI app
+  auth.py           users, password hashing, signed sessions
+data/               synthetic HR, AD, Okta and AWS exports
+frontend/           React + Vite + Recharts dashboard
+docs/screenshots/   images used in this README
 ```
 
 ## Repository

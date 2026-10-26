@@ -2,12 +2,19 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-HYBRIDDB = BASE_DIR/"hybridguard.db"
+# ___________________ Databases and frontend ___________________________________
+GUARD_DB = BASE_DIR / "backend" / "database.db"     # identities, accounts, entitlements, events, metrics
+AUTH_DB = BASE_DIR / "backend" / "auth.db"          # dashboard users (kept separate from identity data)
+FRONTEND_DIR = BASE_DIR / "frontend" / "dist"       # built React app (cd frontend && npm run build)
 
-# ___________________csv files path ____________________________________________
+# ___________________ Dataset Paths ____________________________________________
+DATASETS_DIR = BASE_DIR / "data"
 
-AWS_DATA =  BASE_DIR/"csvs"/"aws_users.csv"
-OKTA =      BASE_DIR/"csvs"/"okta_users.csv"
-USER_DETAILS = BASE_DIR/"csvs"/"user_details.csv"
-AUDIT_EVENTS = BASE_DIR/"csvs"/"audit_events.csv"
-AD_USERS = BASE_DIR/"csvs"/"ad_users.csv"
+HR_IDENTITIES_JSON = DATASETS_DIR / "identities (2).json"
+AD_JSON = DATASETS_DIR / "ad_directory.json"
+OKTA_IDENTITIES_JSON = DATASETS_DIR / "okta_identities.json"
+AWS_CLOUDTRAIL_JSON = DATASETS_DIR / "aws_cloudtrail_logs.json"
+
+# Optional event logs. Not in the current dataset, picked up automatically when added.
+OKTA_SYSTEM_LOG_JSON = DATASETS_DIR / "okta_system_log.json"
+AZURE_ACTIVITY_LOG_JSON = DATASETS_DIR / "azure_activity_logs.json"
