@@ -2,22 +2,19 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-HYBRIDDB = BASE_DIR / "hybridguard.db"
+# ___________________ Databases and frontend ___________________________________
+GUARD_DB = BASE_DIR / "backend" / "database.db"     # identities, accounts, entitlements, events, metrics
+AUTH_DB = BASE_DIR / "backend" / "auth.db"          # dashboard users (kept separate from identity data)
+FRONTEND_DIR = BASE_DIR / "frontend" / "dist"       # built React app (cd frontend && npm run build)
 
 # ___________________ Dataset Paths ____________________________________________
-DATASETS_DIR = BASE_DIR / "csvs"
+DATASETS_DIR = BASE_DIR / "data"
 
-IDENTITIES_JSON = DATASETS_DIR / "identities_messy.json"
-OKTA_JSON = DATASETS_DIR / "okta_messy.json"
-AWS_JSON = DATASETS_DIR / "aws_messy.json"
-AZURE_JSON = DATASETS_DIR / "azure_messy.json"
+HR_IDENTITIES_JSON = DATASETS_DIR / "identities (2).json"
+AD_JSON = DATASETS_DIR / "ad_directory.json"
+OKTA_IDENTITIES_JSON = DATASETS_DIR / "okta_identities.json"
+AWS_CLOUDTRAIL_JSON = DATASETS_DIR / "aws_cloudtrail_logs.json"
 
-# Clean fallbacks if messy files are absent
-if not IDENTITIES_JSON.exists():
-    IDENTITIES_JSON = DATASETS_DIR / "identities.json"
-if not OKTA_JSON.exists():
-    OKTA_JSON = DATASETS_DIR / "okta.json"
-if not AWS_JSON.exists():
-    AWS_JSON = DATASETS_DIR / "aws.json"
-if not AZURE_JSON.exists():
-    AZURE_JSON = DATASETS_DIR / "azure.json"
+# Optional event logs. Not in the current dataset, picked up automatically when added.
+OKTA_SYSTEM_LOG_JSON = DATASETS_DIR / "okta_system_log.json"
+AZURE_ACTIVITY_LOG_JSON = DATASETS_DIR / "azure_activity_logs.json"
