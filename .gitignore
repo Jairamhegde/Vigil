@@ -8,4 +8,22 @@ frontend/dist/
 backend/database.db
 backend/auth.db
 .claude
-DETAIL.md
+
+# Personal documents and presentation tooling (kept locally, not part of the app)
+*.pptx
+*.docx
+azure_deployment_architecture.png
+build_concise_presentation.py
+
+# Obsolete scripts from an earlier layout (they target a database that no longer exists)
+pause.ps1
+resume.ps1
+
+# Terraform local state (holds generated secrets, never commit)
+.deploy_vars.json
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfplan
+terraform/*.tfvars
+terraform/*.tfvars.json

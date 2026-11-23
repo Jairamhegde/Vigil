@@ -10,7 +10,7 @@ Vigil metrics schema. It stores only what the dashboard metrics need.
 Facts are stored here. Conclusions (dormant, ghost, risky) are computed by backend/metrics.py,
 so changing a rule only needs a re-run, not a re-ingest. The raw JSON in data/ stays the archive.
 """
-from backend.db_connection import connect_db
+from backend.db_connection import connect_db, create_postgres_functions
 from utils.path import GUARD_DB
 
 table_identities = '''
@@ -99,20 +99,26 @@ CREATE INDEX IF NOT EXISTS ix_audit_events_time       ON audit_events(event_time
 CREATE INDEX IF NOT EXISTS ix_identity_metrics_as_of  ON identity_metrics(as_of, risk_score);
 '''
 
-ALL_TABLES = [table_identities, table_accounts, table_entitlements, table_audit_events, table_identity_metrics]
+from backend.revocation import table_revocations  # noqa: E402  (audit log of revoked access)
+
+ALL_TABLES = [table_identities, table_accounts, table_entitlements, table_audit_events, table_identity_metrics,
+              table_revocations]
 
 
 def create_all_tables(conn=None):
     own_conn = conn is None
     if own_conn:
         conn = connect_db(GUARD_DB)
-    conn.execute("PRAGMA foreign_keys = ON")
-    with conn:
-        for ddl in ALL_TABLES:
-            conn.execute(ddl)
-        conn.executescript(indexes)
-    if own_conn:
-        conn.close()
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        with conn:
+            create_postgres_functions(conn)   # helper SQL functions the queries rely on (PostgreSQL only)
+            for ddl in ALL_TABLES:
+                conn.execute(ddl)
+            conn.executescript(indexes)
+    finally:
+        if own_conn:
+            conn.close()
 
 
 if __name__ == "__main__":

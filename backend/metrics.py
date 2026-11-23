@@ -53,7 +53,7 @@ def _default_as_of(conn):
     stable results on the synthetic export."""
     return conn.execute('''
         SELECT MAX(t) FROM (SELECT MAX(event_time) AS t FROM audit_events
-                            UNION ALL SELECT MAX(last_login) FROM accounts)
+                            UNION ALL SELECT MAX(last_login) FROM accounts) latest
     ''').fetchone()[0]
 
 
@@ -68,16 +68,12 @@ def _damage_score(entitlements):
 
 
 def compute_identity_metrics(conn, as_of=None):
-    conn.row_factory = None
     as_of = as_of or _default_as_of(conn)
     now = _parse(as_of)
     dormant_cutoff = (now - timedelta(days=DORMANT_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
     recent_cutoff = (now - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def rows(sql, params=()):
-        cur = conn.execute(sql, params)
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+    rows = conn.rows
 
     identities = rows("SELECT * FROM identities")
     accounts_by_identity, entitlements_by_account = {}, {}
@@ -88,8 +84,8 @@ def compute_identity_metrics(conn, as_of=None):
     events = {r["identity_id"]: r for r in rows('''
         SELECT a.identity_id,
                MAX(e.event_time)                                                       AS last_event,
-               SUM(e.outcome = 'failure' AND e.event_time >= :recent)                  AS recent_failures,
-               SUM(e.is_sensitive = 1 AND e.event_time >= :recent)                     AS recent_sensitive
+               SUM(CASE WHEN e.outcome = 'failure' AND e.event_time >= :recent THEN 1 ELSE 0 END) AS recent_failures,
+               SUM(CASE WHEN e.is_sensitive = 1 AND e.event_time >= :recent THEN 1 ELSE 0 END)    AS recent_sensitive
         FROM audit_events e JOIN accounts a ON a.account_id = e.account_id
         WHERE a.identity_id IS NOT NULL AND e.event_time <= :as_of
         GROUP BY a.identity_id
@@ -168,19 +164,24 @@ def compute_identity_metrics(conn, as_of=None):
 
     with conn:
         conn.executemany('''
-            INSERT OR REPLACE INTO identity_metrics(identity_id, as_of, is_dormant, is_ghost, damage_score,
-                                                    risk_score, is_risky, reasons)
+            INSERT INTO identity_metrics(identity_id, as_of, is_dormant, is_ghost, damage_score,
+                                         risk_score, is_risky, reasons)
             VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT (identity_id, as_of) DO UPDATE SET
+                is_dormant = excluded.is_dormant, is_ghost = excluded.is_ghost,
+                damage_score = excluded.damage_score, risk_score = excluded.risk_score,
+                is_risky = excluded.is_risky, reasons = excluded.reasons
         ''', results)
     return as_of, len(results)
 
 
 def run(db_path=GUARD_DB, as_of=None):
     conn = connect_db(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
-    result = compute_identity_metrics(conn, as_of)
-    conn.close()
-    return result
+    try:
+        conn.execute("PRAGMA foreign_keys = ON")
+        return compute_identity_metrics(conn, as_of)
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

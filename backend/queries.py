@@ -8,7 +8,6 @@ dictionary), so the API layer can send the result as JSON without knowing any SQ
 and for the synthetic export it keeps results stable (the data ends on 2026-09-30).
 """
 import json
-import sqlite3
 
 from backend.db_connection import connect_db
 from utils.path import GUARD_DB
@@ -18,14 +17,11 @@ INACTIVE_DAYS = 30
 
 def run_query(sql, params=(), db_path=GUARD_DB):
     conn = connect_db(db_path)
-    conn.row_factory = sqlite3.Row
 
     try:
-        rows = conn.execute(sql, params).fetchall()
+        return conn.rows(sql, params)
     finally:
         conn.close()
-
-    return [dict(row) for row in rows]
 
 
 def split_list(value):
@@ -43,7 +39,7 @@ def get_reference_time():
             SELECT MAX(event_time) AS latest FROM audit_events
             UNION ALL
             SELECT MAX(last_login) FROM accounts
-        )
+        ) latest
     ''')
 
     return rows[0]["reference_time"]
@@ -88,7 +84,7 @@ def get_cross_platform_dormant_identities():
           AND substr(e.event_time, 1, 10) >
               CASE WHEN i.hr_status = 'Active' THEN '0000-00-00'
                    ELSE COALESCE(i.termination_date, i.leave_start_date) END
-        GROUP BY i.identity_id
+        GROUP BY i.identity_id, ad.ad_enabled
         ORDER BY events_after_inactive DESC
     ''')
 
@@ -114,7 +110,7 @@ def get_inactive_identities(days=INACTIVE_DAYS):
                 identity_id,
                 platform,
                 last_login,
-                CAST(julianday(:reference_time) - julianday(last_login) AS INTEGER)    AS days_unused
+                days_between(:reference_time, last_login)                                AS days_unused
             FROM accounts
             WHERE identity_id IS NOT NULL
               AND enabled = 1
@@ -122,6 +118,7 @@ def get_inactive_identities(days=INACTIVE_DAYS):
               -- otherwise a missing log feed would make every cloud account look unused.
               AND (platform IN ('ad', 'okta') OR platform IN (SELECT DISTINCT platform FROM audit_events))
         )
+        SELECT * FROM (
         SELECT
             i.employee_id,
             i.full_name,
@@ -129,7 +126,7 @@ def get_inactive_identities(days=INACTIVE_DAYS):
             i.role_title,
             i.hr_status,
             COUNT(*)                                                                AS enabled_accounts,
-            SUM(ea.last_login IS NULL OR ea.days_unused > :days)                    AS stale_accounts,
+            SUM(CASE WHEN ea.last_login IS NULL OR ea.days_unused > :days THEN 1 ELSE 0 END) AS stale_accounts,
             MAX(ea.last_login)                                                      AS last_activity,
             MAX(CASE WHEN ea.last_login IS NULL OR ea.days_unused > :days
                      THEN COALESCE(ea.days_unused, 9999) END)                       AS max_days_unused,
@@ -140,8 +137,9 @@ def get_inactive_identities(days=INACTIVE_DAYS):
         JOIN enabled_accounts ea ON ea.identity_id = i.identity_id
         WHERE i.hr_status = 'Active'
         GROUP BY i.identity_id
-        HAVING stale_accounts > 0
-        ORDER BY stale_accounts = enabled_accounts DESC, max_days_unused DESC
+        ) per_identity
+        WHERE stale_accounts > 0
+        ORDER BY CASE WHEN stale_accounts = enabled_accounts THEN 1 ELSE 0 END DESC, max_days_unused DESC
     ''', {"reference_time": reference_time, "days": days})
 
     for row in rows:
@@ -300,10 +298,10 @@ def get_event_timeline():
     """Events per week, split into normal, failed and sensitive, for a line chart."""
     return run_query('''
         SELECT
-            strftime('%Y-%W', event_time)                  AS week,
+            vigil_week(event_time)                         AS week,
             MIN(substr(event_time, 1, 10))                 AS week_start,
             COUNT(*)                                       AS total,
-            SUM(outcome = 'failure')                       AS failed,
+            SUM(CASE WHEN outcome = 'failure' THEN 1 ELSE 0 END) AS failed,
             SUM(is_sensitive)                              AS sensitive
         FROM audit_events
         GROUP BY week

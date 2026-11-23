@@ -1,0 +1,22 @@
+# Keep the build context small: az acr build uploads everything not listed here.
+.git
+.github
+.claude
+.vscode
+terraform
+docs
+node_modules
+frontend
+priviguard-dashboard
+schema
+__pycache__
+**/__pycache__
+*.pyc
+*.db
+*.log
+*.tmp
+*.docx
+*.pptx
+*.png
+*.ps1
+.deploy_vars.json

@@ -1,12 +1,12 @@
 {
   "meta": {
-    "generatedFor": "HybridGuard MVP",
+    "generatedFor": "Vigil MVP",
     "source": "Okta Management API v1 (/api/v1/users, /groups, /apps, /users/{id}/factors) \u2014 synthetic export",
     "orgUrl": "https://contoso.okta.com",
     "asOf": "2026-09-30T23:59:59.000Z",
     "sourceIdentities": "csvs/identities (2).json",
     "userCount": 160,
-    "note": "Synthetic data. Okta is the IdP; users are mastered in Active Directory (contoso.local) and federated to AWS IAM Identity Center and Microsoft Entra ID/Azure. Fields prefixed with '_' are HybridGuard test annotations, not part of the Okta API."
+    "note": "Synthetic data. Okta is the IdP; users are mastered in Active Directory (contoso.local) and federated to AWS IAM Identity Center and Microsoft Entra ID/Azure. Fields prefixed with '_' are Vigil test annotations, not part of the Okta API."
   },
   "groups": [
     {

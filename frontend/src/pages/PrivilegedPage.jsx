@@ -7,6 +7,7 @@ import {
     ChartBox, ChartTooltip, Empty, HrBadge, KpiCard, PageError, PageSkeleton, Panel, Person, SearchBox, Segmented,
     TierBadge,
 } from "../components/ui";
+import { RevokeButton } from "../components/RevokeDialog";
 import { AXIS, CURSOR, GRID, LEGEND, PIE_STROKE } from "../lib/charts";
 import { useApi } from "../lib/data";
 import { COLORS, PLATFORM_COLORS, countBy, matchesSearch, platformName, TIER_COLORS, TIER_LABELS } from "../lib/format";
@@ -14,6 +15,7 @@ import { COLORS, PLATFORM_COLORS, countBy, matchesSearch, platformName, TIER_COL
 const FILTERS = [
     { value: "all", label: "All" },
     { value: "tier0", label: "Tier 0" },
+    { value: "tier1", label: "Tier 1" },
     { value: "leavers", label: "Leavers" },
 ];
 
@@ -40,11 +42,15 @@ export default function PrivilegedPage() {
     const leavers = rows.filter((row) => row.hr_status !== "Active");
     const inherited = rows.flatMap((row) => row.privileges).filter((item) => item.includes("nested via")).length;
 
-    const filtered = rows.filter((row) => {
-        if (filter === "tier0" && row.highest_tier !== 0) return false;
-        if (filter === "leavers" && row.hr_status === "Active") return false;
-        return matchesSearch(row, search);
+    // The filter drives the charts and the list together; the search narrows the list only
+    const inFilter = rows.filter((row) => {
+        if (filter === "tier0") return row.highest_tier === 0;
+        if (filter === "tier1") return row.highest_tier === 1;
+        if (filter === "leavers") return row.hr_status !== "Active";
+        return true;
     });
+    const filtered = inFilter.filter((row) => matchesSearch(row, search));
+    const filterLabel = FILTERS.find((option) => option.value === filter).label;
 
     return (
         <>
@@ -59,27 +65,29 @@ export default function PrivilegedPage() {
                          note="Privilege that comes through nested groups" />
             </div>
 
+            <div className="toolbar page-filter">
+                <span className="muted">Showing</span>
+                <Segmented options={FILTERS} value={filter} onChange={setFilter} label="Filter" />
+                <span className="muted">{inFilter.length} of {rows.length} privileged identities</span>
+            </div>
+
             <div className="grid-2">
-                <Panel title="Privileged identities by department" subtitle="Grouped by highest tier held">
-                    <DepartmentChart rows={rows} />
+                <Panel title="Privileged identities by department" subtitle={`Grouped by highest tier held · ${filterLabel}`}>
+                    <DepartmentChart rows={inFilter} />
                 </Panel>
-                <Panel title="Tier 0 grants by platform" subtitle="Where admin access lives">
-                    <PlatformDonut rows={rows} />
+                <Panel title="Tier 0 grants by platform" subtitle={`Where admin access lives · ${filterLabel}`}>
+                    <PlatformDonut rows={inFilter} />
                 </Panel>
             </div>
 
-            <Panel title="Privileged identities" subtitle="T0 = admin, T1 = elevated. Nested grants show the group they come through" flush
-                   actions={
-                       <div className="toolbar">
-                           <SearchBox value={search} onChange={setSearch} />
-                           <Segmented options={FILTERS} value={filter} onChange={setFilter} label="Filter" />
-                       </div>
-                   }>
+            <Panel title={`Privileged identities · ${filtered.length}`}
+                   subtitle={`${filterLabel}. T0 = admin, T1 = elevated. Nested grants show the group they come through`} flush
+                   actions={<div className="toolbar"><SearchBox value={search} onChange={setSearch} /></div>}>
                 {filtered.length ? (
                     <div className="table-wrap">
                         <table>
                             <thead>
-                                <tr><th>Identity</th><th>HR status</th><th>Highest tier</th><th>Grants</th><th>Privileges</th></tr>
+                                <tr><th>Identity</th><th>HR status</th><th>Highest tier</th><th>Grants</th><th>Privileges</th><th>Action</th></tr>
                             </thead>
                             <tbody>
                                 {filtered.map((row) => <PrivilegedRow key={row.employee_id} row={row} />)}
@@ -113,6 +121,12 @@ function PrivilegedRow({ row }) {
                         );
                     })}
                 </div>
+            </td>
+            <td>
+                <RevokeButton row={row} compact
+                              reason={row.hr_status !== "Active"
+                                  ? `${row.hr_status} employee still holds ${TIER_LABELS[row.highest_tier]} access`
+                                  : `Review of ${TIER_LABELS[row.highest_tier]} access`} />
             </td>
         </tr>
     );

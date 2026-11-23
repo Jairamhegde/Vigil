@@ -1,11 +1,11 @@
 {
   "meta": {
-    "generatedFor": "HybridGuard MVP",
+    "generatedFor": "Vigil MVP",
     "source": "Active Directory (contoso.local) - synthetic LDAP export",
     "asOf": "2026-09-30T23:59:59Z",
     "sourceIdentities": "csvs/identities_messy.json",
     "sourceOkta": "csvs/okta_messy.json",
-    "note": "Synthetic data. Okta groups are pushed from the Access OU; resolving group nesting (member/memberOf, possibly circular) gives each employee's effective access. Every account is also a member of Domain Users via primaryGroupID 513. Accounts join identities on employeeID; admin accounts share their owner's employeeID and service accounts have none. Fields prefixed with '_' are HybridGuard annotations, not AD attributes."
+    "note": "Synthetic data. Okta groups are pushed from the Access OU; resolving group nesting (member/memberOf, possibly circular) gives each employee's effective access. Every account is also a member of Domain Users via primaryGroupID 513. Accounts join identities on employeeID; admin accounts share their owner's employeeID and service accounts have none. Fields prefixed with '_' are Vigil annotations, not AD attributes."
   },
   "domain": {
     "dnsRoot": "contoso.local",

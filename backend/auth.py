@@ -1,7 +1,8 @@
 """
 Auth service: dashboard users, password hashing and signed session tokens.
 
-It keeps its own small database (backend/auth.db), so it does not depend on the identity data.
+Locally it keeps its own small SQLite database (backend/auth.db), so it does not depend on the identity
+data. On Azure (VIGIL_DATABASE_URL set) its two tables live in the PostgreSQL database.
 
 Create users from the command line:
     python -m backend.auth create-user <username> super_admin
@@ -18,10 +19,11 @@ import hmac
 import json
 import os
 import secrets
-import sqlite3
 import sys
 import time
+from datetime import datetime, timezone
 
+from backend.db_connection import connect_db
 from utils.path import AUTH_DB
 
 ROLES = ("super_admin", "viewer")
@@ -40,15 +42,24 @@ _failed_logins = {}
 # ___________________ Storage _________________________________________________
 
 def connect_auth_db():
-    conn = sqlite3.connect(AUTH_DB)
+    conn = connect_db(AUTH_DB)
+    try:
+        _create_auth_tables(conn)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
 
+
+def _create_auth_tables(conn):
+    # Usernames are stored lower-case, so lookups are case-insensitive on both engines
     conn.execute('''
         CREATE TABLE IF NOT EXISTS app_users (
-            username        TEXT PRIMARY KEY COLLATE NOCASE,
+            username        TEXT PRIMARY KEY,
             password_hash   TEXT NOT NULL,
             salt            TEXT NOT NULL,
             role            TEXT NOT NULL CHECK (role IN ('super_admin', 'viewer')),
-            created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+            created_at      TEXT NOT NULL
         )
     ''')
 
@@ -59,7 +70,7 @@ def connect_auth_db():
         )
     ''')
 
-    return conn
+    conn.commit()   # keep the tables even if the caller only reads
 
 
 def get_signing_secret():
@@ -71,16 +82,17 @@ def get_signing_secret():
 
     conn = connect_auth_db()
 
-    with conn:
-        row = conn.execute("SELECT value FROM auth_settings WHERE name = 'signing_secret'").fetchone()
+    try:
+        with conn:
+            row = conn.execute("SELECT value FROM auth_settings WHERE name = 'signing_secret'").fetchone()
 
-        if row is None:
-            secret = secrets.token_hex(32)
-            conn.execute("INSERT INTO auth_settings (name, value) VALUES ('signing_secret', ?)", (secret,))
-        else:
-            secret = row[0]
-
-    conn.close()
+            if row is None:
+                secret = secrets.token_hex(32)
+                conn.execute("INSERT INTO auth_settings (name, value) VALUES ('signing_secret', ?)", (secret,))
+            else:
+                secret = row[0]
+    finally:
+        conn.close()
 
     return secret.encode()
 
@@ -102,20 +114,24 @@ def create_user(username, password, role):
     salt = secrets.token_hex(16)
     conn = connect_auth_db()
 
-    with conn:
-        conn.execute('''
-            INSERT INTO app_users (username, password_hash, salt, role) VALUES (?, ?, ?, ?)
+    try:
+        with conn:
+            conn.execute('''
+            INSERT INTO app_users (username, password_hash, salt, role, created_at) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (username) DO UPDATE SET
                 password_hash = excluded.password_hash, salt = excluded.salt, role = excluded.role
-        ''', (username, hash_password(password, salt), salt, role))
-
-    conn.close()
+        ''', (username.lower(), hash_password(password, salt), salt, role,
+              datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")))
+    finally:
+        conn.close()
 
 
 def ensure_default_admin():
     conn = connect_auth_db()
-    user_count = conn.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
-    conn.close()
+    try:
+        user_count = conn.execute("SELECT COUNT(*) FROM app_users").fetchone()[0]
+    finally:
+        conn.close()
 
     if user_count > 0:
         return
@@ -141,9 +157,11 @@ def verify_user(username, password):
         raise PermissionError("Too many failed attempts. Try again in a few minutes.")
 
     conn = connect_auth_db()
-    row = conn.execute("SELECT username, password_hash, salt, role FROM app_users WHERE username = ?",
-                       (username,)).fetchone()
-    conn.close()
+    try:
+        row = conn.execute("SELECT username, password_hash, salt, role FROM app_users WHERE username = ?",
+                           (username.lower(),)).fetchone()
+    finally:
+        conn.close()
 
     if row and hmac.compare_digest(row[1], hash_password(password, row[2])):
         _failed_logins.pop(key, None)

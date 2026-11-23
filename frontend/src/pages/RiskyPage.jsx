@@ -6,6 +6,7 @@ import {
 import {
     Badge, ChartBox, Empty, HrBadge, KpiCard, PageError, PageSkeleton, Panel, Person, ReasonList, ScoreBar, SearchBox,
 } from "../components/ui";
+import { RevokeButton } from "../components/RevokeDialog";
 import { AXIS, CURSOR, GRID, LEGEND } from "../lib/charts";
 import { useApi } from "../lib/data";
 import { BANDS, COLORS, matchesSearch, prettySignal, riskBand, splitReason } from "../lib/format";
@@ -59,7 +60,7 @@ export default function RiskyPage() {
                     <div className="table-wrap">
                         <table>
                             <thead>
-                                <tr><th>Identity</th><th>HR status</th><th>Risk</th><th>Damage</th><th>Flags</th><th>Why</th></tr>
+                                <tr><th>Identity</th><th>HR status</th><th>Risk</th><th>Damage</th><th>Flags</th><th>Why</th><th>Action</th></tr>
                             </thead>
                             <tbody>
                                 {filtered.map((row) => <RiskyRow key={row.employee_id} row={row} />)}
@@ -91,8 +92,20 @@ function RiskyRow({ row }) {
                 </div>
             </td>
             <td><ReasonList reasons={row.reasons} /></td>
+            <td><RevokeButton row={row} compact reason={riskReason(row)} /></td>
         </tr>
     );
+}
+
+// Pre-filled audit reason: the strongest signals for this identity
+function riskReason(row) {
+    const signals = row.reasons
+        .map((reason) => splitReason(reason).signal)
+        .filter((signal) => signal !== "privileges")
+        .slice(0, 3)
+        .map(prettySignal);
+
+    return `Risk score ${row.risk_score}` + (signals.length ? `: ${signals.join(", ")}` : "");
 }
 
 function RiskScatter({ rows }) {

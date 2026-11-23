@@ -6,7 +6,10 @@ Dashboard UI helper functions: CSS injection, reusable HTML components
 a shared Plotly template.
 """
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 try:
     import streamlit as st
 except ImportError:

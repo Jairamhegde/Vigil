@@ -1,4 +1,4 @@
-import { Activity, Cloud, Layers, Moon } from "lucide-react";
+import { Activity, ArrowDown, ArrowUp, Cloud, Layers, Moon } from "lucide-react";
 import { useState } from "react";
 import {
     Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -6,19 +6,33 @@ import {
 import {
     Badge, ChartBox, ChartTooltip, Empty, HrBadge, KpiCard, PageError, PageSkeleton, Panel, Person, SearchBox, Segmented,
 } from "../components/ui";
+import { RevokeButton } from "../components/RevokeDialog";
 import { AXIS, CURSOR, GRID, LEGEND, PIE_STROKE } from "../lib/charts";
 import { useApi } from "../lib/data";
 import { COLORS, PLATFORM_COLORS, countBy, formatDate, formatNumber, matchesSearch, platformName } from "../lib/format";
 
+// 0 = "All": every enabled account not used today, so the list shows everyone ranked by how long
 const DAY_OPTIONS = [
-    { value: 30, label: "30 days" },
-    { value: 60, label: "60 days" },
-    { value: 90, label: "90 days" },
+    { value: 0, label: "All" },
+    { value: 30, label: "30+ days" },
+    { value: 60, label: "60+ days" },
+    { value: 90, label: "90+ days" },
+    { value: 180, label: "180+ days" },
 ];
+
+function unusedFor(days) {
+    return days ? `unused for ${days}+ days` : "not used today";
+}
+
+// Never-used accounts count as the longest gap
+function gap(row) {
+    return row.never_used ? Infinity : row.max_days_unused;
+}
 
 export default function DormantPage() {
     const [days, setDays] = useState(30);
     const [search, setSearch] = useState("");
+    const [sortDesc, setSortDesc] = useState(true);
 
     const crossPlatform = useApi("/api/identities/dormant/cross-platform");
     const inactive = useApi(`/api/identities/dormant/inactive?days=${days}`);
@@ -38,7 +52,9 @@ export default function DormantPage() {
     const eventsAfterExit = leavers.reduce((sum, row) => sum + row.events_after_inactive, 0);
     const unusedAccounts = rows.reduce((sum, row) => sum + row.stale_accounts, 0);
     const fullyInactive = rows.filter((row) => row.fully_inactive).length;
-    const filtered = rows.filter((row) => matchesSearch(row, search));
+    const filtered = rows
+        .filter((row) => matchesSearch(row, search))
+        .sort((a, b) => (sortDesc ? gap(b) - gap(a) : gap(a) - gap(b)) || a.full_name.localeCompare(b.full_name));
 
     return (
         <>
@@ -48,7 +64,7 @@ export default function DormantPage() {
                 <KpiCard label="Events after exit" value={formatNumber(eventsAfterExit)} color={COLORS.high} icon={Activity}
                          note="Cloud events after the leave / termination date" />
                 <KpiCard label="Dormant access" value={rows.length} color={COLORS.medium} icon={Moon}
-                         note={`Identities with an account unused for ${days}+ days`} />
+                         note={`Identities with an account ${unusedFor(days)}`} />
                 <KpiCard label="Unused accounts" value={unusedAccounts} color={COLORS.accent} icon={Layers}
                          note={`${fullyInactive} ${fullyInactive === 1 ? "identity" : "identities"} inactive on every platform`} />
             </div>
@@ -65,7 +81,7 @@ export default function DormantPage() {
             </Panel>
 
             <div className="grid-2" style={{ marginTop: 20 }}>
-                <Panel title="Unused accounts by platform" subtitle={`Enabled accounts with no sign-in for ${days}+ days`}>
+                <Panel title="Unused accounts by platform" subtitle={`Enabled accounts ${unusedFor(days)}`}>
                     <PlatformChart rows={rows} />
                 </Panel>
                 <Panel title="How long unused" subtitle="Longest gap per identity">
@@ -73,7 +89,8 @@ export default function DormantPage() {
                 </Panel>
             </div>
 
-            <Panel title="Dormant access" subtitle="Active employees holding accounts they no longer use" flush
+            <Panel title={`Dormant access · ${filtered.length} ${filtered.length === 1 ? "identity" : "identities"}`}
+                   subtitle={`Active employees with an account ${unusedFor(days)}, ${sortDesc ? "longest" : "shortest"} gap first`} flush
                    actions={
                        <div className="toolbar">
                            <SearchBox value={search} onChange={setSearch} />
@@ -84,7 +101,15 @@ export default function DormantPage() {
                     <div className="table-wrap">
                         <table>
                             <thead>
-                                <tr><th>Identity</th><th>Role</th><th>Unused accounts</th><th>Longest unused</th><th>Last activity anywhere</th></tr>
+                                <tr>
+                                    <th>Identity</th><th>Role</th><th>Unused accounts</th>
+                                    <th aria-sort={sortDesc ? "descending" : "ascending"}>
+                                        <button className="th-sort" onClick={() => setSortDesc(!sortDesc)}>
+                                            Longest unused {sortDesc ? <ArrowDown size={12} /> : <ArrowUp size={12} />}
+                                        </button>
+                                    </th>
+                                    <th>Last activity anywhere</th><th>Action</th>
+                                </tr>
                             </thead>
                             <tbody>
                                 {filtered.map((row) => <DormantRow key={row.employee_id} row={row} />)}
@@ -92,7 +117,7 @@ export default function DormantPage() {
                         </table>
                     </div>
                 ) : (
-                    <Empty>No dormant access found.</Empty>
+                    <Empty>No identity has an account {unusedFor(days)}.</Empty>
                 )}
             </Panel>
         </>
@@ -127,6 +152,12 @@ function LeaverCard({ row }) {
             <div className="alert-foot">
                 Inactive since <b>{formatDate(row.inactive_since)}</b> · last cloud event <b>{formatDate(row.last_event)}</b>
             </div>
+
+            <div className="alert-actions">
+                <RevokeButton row={row} compact
+                              reason={`${row.hr_status} since ${row.inactive_since || "unknown"}, still active in `
+                                  + row.cloud_platforms.map(platformName).join(", ")} />
+            </div>
         </article>
     );
 }
@@ -138,7 +169,7 @@ function DormantRow({ row }) {
         longest = <Badge kind="neutral">Never used</Badge>;
     } else {
         const kind = row.max_days_unused > 180 ? "critical" : row.max_days_unused > 90 ? "high" : "medium";
-        longest = <Badge kind={kind}>{row.max_days_unused} days</Badge>;
+        longest = <Badge kind={kind}>{row.max_days_unused} {row.max_days_unused === 1 ? "day" : "days"}</Badge>;
     }
 
     return (
@@ -153,6 +184,10 @@ function DormantRow({ row }) {
             </td>
             <td>{longest}</td>
             <td className="mono">{formatDate(row.last_activity)}</td>
+            <td>
+                <RevokeButton row={row} compact reason={`Dormant access: ${row.stale_detail.join(", ")}`}
+                              preselect={(account) => row.stale_detail.some((detail) => detail.startsWith(account.platform + ":"))} />
+            </td>
         </tr>
     );
 }
@@ -181,7 +216,7 @@ function PlatformChart({ rows }) {
 
 function AgeDonut({ rows, days }) {
     const buckets = [
-        { name: `${days}-90 days`, color: COLORS.medium, test: (row) => !row.never_used && row.max_days_unused <= 90 },
+        { name: `${days ? days : 1}-90 days`, color: COLORS.medium, test: (row) => !row.never_used && row.max_days_unused <= 90 },
         { name: "90-180 days", color: COLORS.high, test: (row) => !row.never_used && row.max_days_unused > 90 && row.max_days_unused <= 180 },
         { name: "180+ days", color: COLORS.critical, test: (row) => !row.never_used && row.max_days_unused > 180 },
         { name: "Never used", color: COLORS.slate, test: (row) => row.never_used },

@@ -2,6 +2,10 @@
 
 const SESSION_KEY = "vigil.session";
 
+// Empty when the API serves the dashboard itself (local run.py). On Azure the dashboard is on
+// Static Web Apps and the API on Container Apps, so deploy.ps1 builds with VITE_API_URL set.
+const API_BASE = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+
 export class ApiError extends Error {
     constructor(status, message) {
         super(message);
@@ -16,7 +20,7 @@ export async function apiRequest(path, { method = "GET", body, token } = {}) {
         headers.Authorization = "Bearer " + token;
     }
 
-    const response = await fetch(path, {
+    const response = await fetch(API_BASE + path, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,

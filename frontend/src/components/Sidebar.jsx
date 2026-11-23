@@ -1,4 +1,4 @@
-import { KeyRound, LayoutDashboard, LogOut, Moon, TriangleAlert } from "lucide-react";
+import { Database, KeyRound, LayoutDashboard, LogOut, Moon, TriangleAlert } from "lucide-react";
 import { initials } from "../lib/format";
 import { Brand } from "./ui";
 
@@ -7,6 +7,7 @@ const LINKS = [
     { page: "risky", label: "Risky identities", icon: TriangleAlert },
     { page: "dormant", label: "Dormant identities", icon: Moon },
     { page: "privileged", label: "Privileged access", icon: KeyRound },
+    { page: "data", label: "Raw data", icon: Database },
 ];
 
 export default function Sidebar({ page, username, riskyCount, onLogout }) {

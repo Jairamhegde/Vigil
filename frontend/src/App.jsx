@@ -5,6 +5,7 @@ import Toast from "./components/Toast";
 import Topbar from "./components/Topbar";
 import { PageSkeleton } from "./components/ui";
 import { apiRequest, clearSession, loadSession, saveSession } from "./lib/api";
+import { ActionsProvider } from "./lib/actions";
 import { DataProvider, useApi } from "./lib/data";
 import { formatDate } from "./lib/format";
 import DeniedPage from "./pages/DeniedPage";
@@ -15,6 +16,7 @@ const OverviewPage = lazy(() => import("./pages/OverviewPage"));
 const RiskyPage = lazy(() => import("./pages/RiskyPage"));
 const DormantPage = lazy(() => import("./pages/DormantPage"));
 const PrivilegedPage = lazy(() => import("./pages/PrivilegedPage"));
+const RawDataPage = lazy(() => import("./pages/RawDataPage"));
 
 const PAGES = {
     overview: {
@@ -36,6 +38,11 @@ const PAGES = {
         title: "Privileged access",
         subtitle: "Who holds admin and elevated rights, including inherited ones",
         component: PrivilegedPage,
+    },
+    data: {
+        title: "Raw data",
+        subtitle: "The HR, Active Directory, Okta and AWS exports exactly as Vigil reads them",
+        component: RawDataPage,
     },
 };
 
@@ -174,6 +181,7 @@ function Dashboard({ username, request, onLogout, onDataChanged }) {
     const stamp = summary.data ? "Data as of " + formatDate(summary.data.reference_time) : "Loading data…";
 
     return (
+        <ActionsProvider request={request} notify={setToast} dataChanged={onDataChanged}>
         <div className="app">
             <Sidebar page={page} username={username} onLogout={onLogout}
                      riskyCount={summary.data ? summary.data.risky_identities : 0} />
@@ -190,5 +198,6 @@ function Dashboard({ username, request, onLogout, onDataChanged }) {
 
             <Toast toast={toast} onClose={closeToast} />
         </div>
+        </ActionsProvider>
     );
 }
