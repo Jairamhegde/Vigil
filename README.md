@@ -1,158 +1,149 @@
-# HybridGuard
+# Vigil
 
-**Cross-platform identity posture and risk dashboard.**
+**Vigil is an identity security console.** It joins HR, Active Directory, Okta, AWS and Azure into one
+view of who has access to what. It flags the identities that are a risk (ghost accounts, dormant access,
+hidden admin rights), and lets a super admin revoke that access from the dashboard.
 
-**[Live Demo (Streamlit)](https://hybridguard-console.streamlit.app/)**
+![Vigil overview dashboard](docs/screenshots/overview.png)
 
-> **Status:** The live demo runs on Streamlit. The dashboard is currently being migrated to **React + FastAPI**, which is still in progress. The React frontend, FastAPI backend and localhost setup instructions in this repo belong to that migration.
-
----
-
-## What It Is
-
-HybridGuard is an Identity Security Posture Management (ISPM) tool. It pulls identity data from **HR, Active Directory, AWS IAM and Okta**, matches accounts that belong to the same person, normalizes privileges into a common hierarchy, and scores each identity's risk. Results are shown in a dashboard with one-click remediation and downloadable reports.
-
-## What It Solves
-
-Enterprises manage identities across disconnected systems. The same person may appear as `ahill`, `a.hill` and `allison.hill1`, and nobody has a single view of who holds which privileges. That makes the following hard to spot:
-
-- **Ghost accounts:** employees disabled in HR who are still active on a platform
-- **Privilege creep:** standard employees holding elevated access
-- **Dormant accounts:** unused accounts that stay open as attack surface
-
-HybridGuard gives security teams one prioritized view of these risks and explains why each identity was flagged.
-
----
-
-## How It Works
+## Architecture
 
 ```mermaid
 flowchart LR
-    A["CSV Telemetry<br/>HR · AD · AWS · Okta"] --> B["Fuzzy Identity<br/>Resolution"]
-    B --> C[("3NF SQLite<br/>Database")]
-    C --> D["Threat Detection<br/>& Risk Scoring"]
-    D --> E["Dashboard<br/>& Remediation"]
-    E --> F["Risk Reports"]
+    D["data/<br/>HR · AD · Okta · AWS exports"] --> I["Ingest<br/>match · tier · resolve nesting"]
+    I --> DB[("Database<br/>PostgreSQL on Azure<br/>SQLite locally")]
+    DB --> M["Scoring<br/>dormant · ghost · damage · risk"]
+    M --> DB
+    DB --> API["FastAPI<br/>Azure Container Apps"]
+    API <-->|HTTPS| UI["React dashboard<br/>Azure Static Web Apps"]
+    KV["Azure Key Vault<br/>secrets"] -.-> API
 ```
 
-### Core Algorithms
+1. **Ingest** links every account to an HR person by email, falling back to employee ID for admin accounts. It also walks nested AD groups, including circular ones, to find inherited rights.
+2. **Scoring** computes the metrics below for every identity.
+3. **The API** serves them to a dashboard that only super admins can open.
 
-**1. Fuzzy identity resolution**
-Usernames are cleaned and reduced to a name pattern, then compared using `difflib.SequenceMatcher`. A match is accepted at a similarity ratio of **0.80 or higher**. Accounts below the threshold are flagged as potential orphan accounts.
+## How the scores work
 
-**2. Privilege tier normalization**
-Platform-specific roles are mapped to one hierarchy so privileges can be compared across systems.
+All rules live in [`backend/metrics.py`](backend/metrics.py) and [`backend/ingest_data.py`](backend/ingest_data.py).
+"Now" is the latest activity in the data: 30 Sep 2026 for the sample set.
 
-| Tier | Meaning | Examples |
-|------|---------|----------|
-| Tier 0 | Full administrative control | `AdministratorAccess`, `Domain Admins`, `SuperAdmin` |
-| Tier 1 | Elevated or internal-tool access | |
-| Tier 2 | Standard user access | |
+### Privilege tiers
 
-**3. Weighted risk scoring (0–100)**
+| Tier | Meaning | Matched by name (or the source system's own tier) |
+|---|---|---|
+| **0** | Admin: can take over the domain or cloud | `admin`, `owner`, `super`, `dcsync`, `domain controllers`, `schema`, `enterprise` |
+| **1** | Elevated | `operator`, `poweruser`, `contributor`, `prod-access`, `helpdesk`, `escalation`, `it-operations` … |
+| **2** | Normal user | everything else |
 
-```python
-risk_score = (damage_score * 0.5) + (dormancy_score * 0.5)
+### Damage score (0–100): what the identity *could* break
+
+```
+damage = min(100, Σ weight(tier) for each distinct privilege on an enabled account)
+         weight: Tier 0 = 25, Tier 1 = 10, Tier 2 = 0
+         × 0.5 if the scope is non-production (dev, staging, test, sandbox)
 ```
 
-| Damage score (highest privilege) | | Dormancy score (days since login) | |
-|---|---|---|---|
-| Tier 0 | 100 | 90 or more | 100 |
-| Tier 1 | 50 | 60 or more | 50 |
-| Tier 2 | 10 | 30 or more | 10 |
-| Disabled user | 0 | Under 30 | 0 |
+### Risk score (0–100): how likely the identity is to be misused
 
-Each identity is tagged with risk factors: `high_privilege`, `dormant_account`, `ghost_account`.
+```
+risk = min(100, Σ signal points + round(0.3 × damage))
+```
 
-**4. Rule-based threat detection**
+| Signal | Points | Fires when |
+|---|---|---|
+| Ghost account | **40** | Terminated in HR, but an account is still enabled |
+| Activity after termination | **30** | Any sign-in or event after the termination date |
+| No MFA | **20** | Enabled Okta account with no MFA factor |
+| Active while on leave | **15** | Signed in after the leave start date |
+| Dormant account | **10** | See *Dormant* below |
+| SMS-only MFA | **10** | Okta MFA is SMS only |
+| Repeated access denied | **10** | 3 or more failed calls in the last 30 days |
+| Sensitive actions | **10** | Any sensitive AWS call in the last 30 days (e.g. `CreateAccessKey`, `AttachRolePolicy`, `StopLogging`, `DeleteTrail`) |
+| Suspended, not deprovisioned | **5** | A terminated user's Okta account is only suspended |
+| Disabled account keeps privilege | **5** | A disabled account still holds Tier 0/1 rights |
 
-| Threat | Severity | Rule |
-|--------|----------|------|
-| Ghost Account | Critical | Disabled in HR but active on a platform |
-| Privilege Creep | High | Standard employee holding elevated privileges |
-| Stale Token | Medium | No recorded credential rotation |
+### Thresholds
 
----
+| Rule | Value |
+|---|---|
+| **Risky** | risk ≥ **40** |
+| Risk bands | Critical ≥ 70 · High ≥ 40 · Medium ≥ 20 · Low < 20 |
+| **Dormant** (score signal) | HR Active, with an AD or Okta account unused for **90+ days** (or never used) |
+| **Dormant access** (dashboard list) | an enabled account unused for **30+ days** by default. Filter: All / 30 / 60 / 90 / 180 days |
+| **Ghost** | HR Terminated, with any account still enabled |
+| **Active after leaving** | Terminated, on leave, or no enabled AD account, yet AWS or Azure recorded activity afterwards |
+| "Recent" window | last **30 days** |
 
-## Features
+**Worked example.** EMP-1057 was terminated, but their AD account `rrodriguez` was still enabled with
+DnsAdmins (Tier 0) and two Tier 1 groups.
 
-- Unified risk score across four platforms
-- Cross-platform identity correlation
-- Automated threat detection
-- Dashboard pages: Overview, Dormancy Analysis, Damage Score, Remediation Backlog, Identities
-- One-click remediation: access revocation and credential rotation
-- Downloadable reports with overall, damage and dormancy scores, risk factors and open incidents
+- Damage = 25 + 10 + 10 = **45**
+- Risk = ghost 40 + activity after termination 30 + suspended 5 + round(0.3 × 45) = **89**, which is critical
+- After revoking the account, ghost and damage drop to 0, so risk = 30 + 5 = **35**, which is not risky.
 
-## Tech Stack
+## Revoking access (two-step verification)
 
-| Layer | Technology |
-|-------|------------|
-| Language | Python |
-| Identity matching | `difflib.SequenceMatcher` |
-| Database | SQLite (3NF schema) |
-| Live dashboard | Streamlit |
-| Migration in progress | FastAPI + Uvicorn (API), React 19 + Vite + Recharts + Lucide (frontend) |
+The risky, dormant and privileged pages each have a **Revoke** button:
 
-## Database Schema
+1. **Choose access.** Pick the accounts and give a reason. The server checks the selection and issues a confirmation that expires in **5 minutes**.
+2. **Verify it's you.** Re-enter your password and type the employee ID.
 
-`hybridguard.db` uses a 3NF schema:
+The accounts are then disabled and their privileges removed. The scores are recomputed and the action is
+written to an audit log (who, when, why, which privileges). Revocations are re-applied after every data
+refresh. Vigil works on exported data, so make the same change in the source system too.
 
-`human_identities` · `platforms` · `accounts` · `role_definitions` · `account_role_mapping` · `audit_events` · `security_incidents`
+## Other features
 
-## Input Data
+- **Raw data page:** every export file, searchable and paged, with the full original record on click, plus the revocation log.
+- **Login security:** PBKDF2 password hashing (200,000 iterations), lockout after 5 failed attempts for 5 minutes, and signed sessions that last 8 hours.
 
-Five CSV files drive each analysis run. Synthetic data is generated by `schema/simulate_data.py`.
+## Run locally
 
-| File | Contents |
-|------|----------|
-| `user_details.csv` | HR master list with employment status |
-| `ad_users.csv` | Active Directory accounts and groups |
-| `aws_users.csv` | AWS IAM users and attached policies |
-| `okta_users.csv` | Okta accounts and role assignments |
-| `audit_events.csv` | Login history and privilege changes |
-
----
-
-## Getting Started
+Needs only Docker. One command starts the same three tiers as on Azure: PostgreSQL, the API, and the dashboard (served by nginx).
 
 ```bash
-git clone https://github.com/Jairamhegde/HybridGuard.git
-cd HybridGuard
-pip install -r requirements.txt
-npm install
-
-python schema/simulate_data.py      # generate synthetic data
-python schema/tables_creation.py    # create the database
-python main.py                      # run matching, scoring and detection
+docker compose up --build      # start, then open http://localhost:8001
+docker compose down            # stop (add -v to also delete the local database)
 ```
 
-**Run the React + FastAPI version (migration in progress)**
+Sign in with `superadmin` / `Vigil@Demo2026`. This is a public demo login for the sample data.
+Set `VIGIL_ADMIN_PASSWORD` before the first start to choose your own, and `VIGIL_PORT` to use another port.
 
-```bash
-npm run dev
+<sub>Without Docker, `pip install -r requirements.txt` then `python run.py` runs everything on SQLite.</sub>
+
+## Deploy to Azure
+
+```powershell
+.\deploy.ps1     # builds and deploys everything with Terraform, prints the URLs and login
+.\destroy.ps1    # deletes every Azure resource it created
 ```
 
-This starts the API at `http://127.0.0.1:8000` and the React console at `http://localhost:5173`.
+| Tier | Azure service |
+|---|---|
+| Dashboard | Azure Static Web Apps |
+| API | Azure Container Apps |
+| Database | Azure Database for PostgreSQL Flexible Server |
+| Secrets | Azure Key Vault |
+| Supporting | Container Registry, managed identity, Log Analytics |
 
-To run them separately:
+Needs the Azure CLI, Terraform, Node.js and Docker.
 
-```bash
-python -m uvicorn backend.api:app --reload --port 8000   # from the repo root
-cd priviguard-dashboard && npm run dev                   # in a second terminal
-```
+**Every Azure resource used, how they connect, and how to deploy: [DEPLOYMENT.md](DEPLOYMENT.md)**
 
-## Project Structure
+## Sample data
+
+`data/` holds a synthetic company: **160 employees**, **173 AD accounts** in 71 nested groups, Okta users
+with MFA and AWS/Azure assignments, and **12,118 AWS CloudTrail events** (May–Sep 2026).
+
+## Project structure
 
 ```text
-backend/        api.py (FastAPI), db_connection.py, normalize_and_match.py, security_incidents.py
-schema/         simulate_data.py, tables_creation.py, clear_data.py
-csvs/           input telemetry files
-dashboard.py    Streamlit dashboard (live)
-priviguard-dashboard/   React dashboard (in progress)
-main.py         pipeline entrypoint
-hybridguard.db  SQLite database
+backend/     ingest_data · insert_data · metrics · queries · revocation · raw_data · auth · expose_backend (FastAPI)
+frontend/    React + Vite dashboard
+terraform/   Azure infrastructure, one file per service
+data/        synthetic exports
+docker-compose.yml   local one-command start · deploy.ps1 / destroy.ps1   Azure one-command deploy and teardown
 ```
 
-## Repository
-
-[github.com/Jairamhegde/HybridGuard](https://github.com/Jairamhegde/HybridGuard)
+[github.com/Jairamhegde/Vigil](https://github.com/Jairamhegde/Vigil)

@@ -1,0 +1,53 @@
+# Run Vigil locally with the same three tiers as on Azure:
+#
+#   docker compose up --build        ->  http://localhost:8001   (superadmin / Vigil@Demo2026)
+#   docker compose down -v           ->  stop and delete the local database
+#
+#   db    PostgreSQL 16         (Azure Database for PostgreSQL on Azure)
+#   api   FastAPI, ./Dockerfile (Azure Container Apps on Azure)
+#   web   nginx + dashboard     (Azure Static Web Apps on Azure)
+#
+# Local-only values. The demo login is public (see README); set VIGIL_ADMIN_PASSWORD to choose your own.
+
+name: vigil
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vigil
+      POSTGRES_USER: vigil
+      POSTGRES_PASSWORD: vigil-local-only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigil -d vigil"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    environment:
+      VIGIL_DATABASE_URL: postgresql://vigil:vigil-local-only@db:5432/vigil
+      VIGIL_ADMIN_USER: ${VIGIL_ADMIN_USER:-superadmin}
+      VIGIL_ADMIN_PASSWORD: ${VIGIL_ADMIN_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build: ./frontend
+    ports:
+      - "${VIGIL_PORT:-8001}:80"   # change with VIGIL_PORT=xxxx
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
